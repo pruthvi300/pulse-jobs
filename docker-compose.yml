@@ -1,0 +1,121 @@
+services:
+  # ===================
+  # Infrastructure
+  # ===================
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: pulse
+      POSTGRES_PASSWORD: pulse_secret
+      POSTGRES_DB: pulse_jobs
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pulse"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ===================
+  # Backend API
+  # ===================
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://pulse:pulse_secret@postgres:5432/pulse_jobs
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./api:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ===================
+  # Celery Workers
+  # ===================
+  worker:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://pulse:pulse_secret@postgres:5432/pulse_jobs
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      # Defaults match app/core/config.py; the load test overrides them (see loadtest/README.md).
+      - SIMULATED_LATENCY_SCALE=${SIMULATED_LATENCY_SCALE:-1.0}
+      - SIMULATED_EMAIL_FAILURE_RATE=${SIMULATED_EMAIL_FAILURE_RATE:-0.3}
+      - SIMULATED_WEBHOOK_FAILURE_RATE=${SIMULATED_WEBHOOK_FAILURE_RATE:-0.2}
+      - RETRY_BACKOFF_BASE_SECONDS=${RETRY_BACKOFF_BASE_SECONDS:-30}
+      - RETRY_BACKOFF_MAX_SECONDS=${RETRY_BACKOFF_MAX_SECONDS:-600}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./api:/app
+    # Consumes every priority queue. For strict prioritisation run separate workers, e.g. -Q critical,high
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2
+
+  # ===================
+  # Celery Flower (Monitoring)
+  # ===================
+  flower:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    depends_on:
+      - redis
+      - worker
+    command: celery -A app.celery_app flower --port=5555
+
+  # ===================
+  # React Frontend
+  # ===================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - api
+
+volumes:
+  redis_data:
+  postgres_data:

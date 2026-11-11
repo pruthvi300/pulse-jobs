@@ -1,0 +1,123 @@
+# ============================================
+# Celery Worker - Deployment + HorizontalPodAutoscaler
+# ============================================
+# This is the KEY Kubernetes feature for Pulse:
+# Workers auto-scale based on CPU usage.
+# When the job queue is busy, K8s spins up more workers.
+# When idle, it scales back down to save resources.
+# ============================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pulse-worker
+  namespace: pulse
+  labels:
+    app: pulse-worker
+spec:
+  replicas: 2  # Minimum 2 workers
+  selector:
+    matchLabels:
+      app: pulse-worker
+  template:
+    metadata:
+      labels:
+        app: pulse-worker
+    spec:
+      containers:
+        - name: worker
+          image: pulse-api:latest  # Same image as API — different entrypoint
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-secrets
+                  key: DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-secrets
+                  key: REDIS_URL
+            - name: CELERY_BROKER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-secrets
+                  key: CELERY_BROKER_URL
+            - name: CELERY_RESULT_BACKEND
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-secrets
+                  key: CELERY_RESULT_BACKEND
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          # Liveness: restart worker if it becomes unresponsive
+          livenessProbe:
+            exec:
+              command:
+                - "bash"
+                - "-c"
+                # Ping only this pod's worker, not every worker in the cluster.
+                - "celery -A app.celery_app inspect ping -d celery@$HOSTNAME --timeout 5"
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          command:
+            - "celery"
+            - "-A"
+            - "app.celery_app"
+            - "worker"
+            - "--loglevel=info"
+            - "--concurrency=4"
+            - "--max-tasks-per-child=100"  # Restart worker process after 100 tasks (prevents memory leaks)
+      restartPolicy: Always
+
+---
+
+# ============================================
+# HorizontalPodAutoscaler - THE KEY FEATURE
+# ============================================
+# Automatically scales workers from 2 to 10 pods
+# based on CPU utilization.
+# When queue is busy → workers spike CPU → HPA adds pods.
+# When queue is empty → CPU drops → HPA removes pods.
+# ============================================
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: pulse-worker-hpa
+  namespace: pulse
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: pulse-worker
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70  # Scale up when average CPU > 70%
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30   # React quickly to load spikes
+      policies:
+        - type: Pods
+          value: 2                      # Add up to 2 pods at a time
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Wait 5 min before scaling down (prevent flapping)
+      policies:
+        - type: Pods
+          value: 1                      # Remove 1 pod at a time
+          periodSeconds: 120

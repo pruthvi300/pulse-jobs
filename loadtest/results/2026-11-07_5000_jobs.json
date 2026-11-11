@@ -1,0 +1,50 @@
+{
+  "config": {
+    "base_url": "http://127.0.0.1:8000",
+    "jobs": 5000,
+    "concurrency": 50,
+    "duplicate_rate": 0.1,
+    "max_retries": 3,
+    "failure_rate": 0.3,
+    "drain_timeout": 600.0
+  },
+  "submit": {
+    "requests": 5500,
+    "unique_keys": 5000,
+    "elapsed_s": 42.54,
+    "requests_per_s": 129.3,
+    "latency_ms": {
+      "p50": 275.2,
+      "p95": 1058.3,
+      "p99": 1645.2,
+      "max": 2981.1,
+      "mean": 385.8
+    },
+    "status_codes": {
+      "200": 500,
+      "201": 5000
+    },
+    "keys_with_duplicate_jobs": 0
+  },
+  "drain": {
+    "drained": true,
+    "seconds_from_first_submit": 44.6,
+    "jobs_per_s": 112.1
+  },
+  "verify": {
+    "statuses": {
+      "completed": 4962,
+      "dead_letter": 38
+    },
+    "attempts_histogram": {
+      "1": 3531,
+      "2": 1056,
+      "3": 271,
+      "4": 142
+    },
+    "jobs_created": 5000,
+    "lost_or_stuck": 0,
+    "extra_jobs_created": 0,
+    "expected_dead_letter": 40.5
+  }
+}

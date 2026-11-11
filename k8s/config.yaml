@@ -1,0 +1,35 @@
+# ============================================
+# Pulse Jobs - Kubernetes Secrets & ConfigMap
+# ============================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pulse-config
+  namespace: pulse
+data:
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  POSTGRES_HOST: "postgres"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "pulse_jobs"
+  CELERY_BROKER_DB: "0"
+  CELERY_RESULT_DB: "1"
+
+---
+
+apiVersion: v1
+kind: Secret
+# Demo values only. In a real cluster, create this Secret out of band
+# (kubectl create secret, Sealed Secrets, External Secrets) and never commit it.
+metadata:
+  name: pulse-secrets
+  namespace: pulse
+type: Opaque
+stringData:
+  POSTGRES_USER: "pulse"
+  POSTGRES_PASSWORD: "pulse_secret"
+  DATABASE_URL: "postgresql+asyncpg://pulse:pulse_secret@postgres:5432/pulse_jobs"
+  REDIS_URL: "redis://redis:6379/0"
+  CELERY_BROKER_URL: "redis://redis:6379/0"
+  CELERY_RESULT_BACKEND: "redis://redis:6379/1"

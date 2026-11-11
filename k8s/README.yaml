@@ -1,0 +1,45 @@
+# ============================================
+# Pulse Jobs - Kubernetes Deployment Guide
+# ============================================
+#
+# Architecture:
+#   ┌─────────────┐     ┌─────────────┐
+#   │   Ingress   │────▶│  API (x2)   │
+#   │  (nginx)    │     │  FastAPI     │
+#   └─────────────┘     └──────┬──────┘
+#                              │
+#                      ┌───────▼───────┐
+#                      │    Redis      │
+#                      │  (broker)     │
+#                      └───────┬───────┘
+#                              │
+#                   ┌──────────▼──────────┐
+#                   │  Workers (2-10)     │
+#                   │  Celery + HPA       │
+#                   │  (auto-scales)      │
+#                   └──────────┬──────────┘
+#                              │
+#                      ┌───────▼───────┐
+#                      │  PostgreSQL   │
+#                      │  (persistent) │
+#                      └───────────────┘
+#
+# Deploy Order:
+#   1. kubectl apply -f k8s/namespace.yaml
+#   2. kubectl apply -f k8s/config.yaml
+#   3. kubectl apply -f k8s/redis.yaml
+#   4. kubectl apply -f k8s/postgres.yaml
+#   5. kubectl apply -f k8s/api.yaml
+#   6. kubectl apply -f k8s/worker.yaml
+#   7. kubectl apply -f k8s/flower.yaml
+#
+# Or deploy all at once:
+#   kubectl apply -f k8s/
+#
+# Useful Commands:
+#   kubectl get pods -n pulse                    # List all pods
+#   kubectl get hpa -n pulse                     # Check auto-scaler status
+#   kubectl logs -f deployment/pulse-worker -n pulse   # Worker logs
+#   kubectl top pods -n pulse                    # Resource usage
+#   kubectl port-forward svc/pulse-flower 5555:5555 -n pulse  # Access Flower UI
+#   kubectl scale deployment pulse-worker --replicas=5 -n pulse  # Manual scale

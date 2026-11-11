@@ -1,0 +1,13 @@
+# Environment-specific variables
+# Copy this to terraform.tfvars and fill in values
+
+aws_region  = "ap-south-1"
+environment = "production"
+
+# Database (change these!)
+db_password = "CHANGE_ME_TO_A_STRONG_PASSWORD"
+
+# ECS Scaling
+api_desired_count = 2
+worker_min_count  = 2
+worker_max_count  = 10

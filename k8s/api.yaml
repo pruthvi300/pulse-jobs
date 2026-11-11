@@ -1,0 +1,111 @@
+# ============================================
+# Pulse API - Deployment with Health Probes
+# ============================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pulse-api
+  namespace: pulse
+  labels:
+    app: pulse-api
+spec:
+  replicas: 2  # Horizontal scaling — 2 API pods behind the Service
+  selector:
+    matchLabels:
+      app: pulse-api
+  template:
+    metadata:
+      labels:
+        app: pulse-api
+    spec:
+      containers:
+        - name: api
+          image: pulse-api:latest  # Replace with your registry: e.g., ghcr.io/pruthvi300/pulse-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-secrets
+                  key: DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-secrets
+                  key: REDIS_URL
+            - name: CELERY_BROKER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-secrets
+                  key: CELERY_BROKER_URL
+            - name: CELERY_RESULT_BACKEND
+              valueFrom:
+                secretKeyRef:
+                  name: pulse-secrets
+                  key: CELERY_RESULT_BACKEND
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          # Readiness: K8s won't send traffic until the API is ready
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3
+          # Liveness: K8s restarts the pod if the API hangs
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+      restartPolicy: Always
+
+---
+
+# ClusterIP Service — internal access, exposed externally via Ingress
+apiVersion: v1
+kind: Service
+metadata:
+  name: pulse-api
+  namespace: pulse
+spec:
+  selector:
+    app: pulse-api
+  ports:
+    - port: 80
+      targetPort: 8000
+  type: ClusterIP
+
+---
+
+# Ingress — expose API externally with path-based routing
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pulse-ingress
+  namespace: pulse
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: pulse.example.com  # Replace with your domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: pulse-api
+                port:
+                  number: 80
