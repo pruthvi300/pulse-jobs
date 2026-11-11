@@ -11,6 +11,16 @@
 
 A distributed background job system built with **FastAPI**, **Celery**, **Redis**, **PostgreSQL** and a **React** dashboard. Clients submit jobs over a REST API; workers process them with retries, exponential backoff, idempotency keys and a dead-letter state, and every state change is recorded in PostgreSQL. It ships with Docker Compose for local use, Kubernetes manifests with autoscaling, Terraform for AWS, and a load test with measured results.
 
+## 📸 Screenshots
+
+**Dashboard**: live job counts by status, submit test jobs, recent jobs (refreshes every 3 s)
+
+![Pulse dashboard](docs/screenshots/dashboard.png)
+
+**Dead-letter jobs**: jobs that ran out of retries, with the last error and one-click replay
+
+![Pulse dead-letter view](docs/screenshots/dead-letter.png)
+
 ## 🏗 System Architecture
 
 ```
